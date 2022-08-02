@@ -31,7 +31,7 @@ if "Non-fat" not in result.stdout:
     slice_path = Path(slice_path)
     os.close(slice_temp_file)
     result = subprocess.run(["lipo", input_path, "-thin", "i386", "-output", slice_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
+
     # Initialize parser
     original_file = BytesIO(slice_path.read_bytes())
     machFile = macholib.MachO.MachO(slice_path)
@@ -65,24 +65,20 @@ symCmd = machFile.headers[0].getSymbolTableCommand()
 
 oldSymOff = symCmd.symoff
 newSymOff = (oldSymOff + 3) & ~(3)
-print("Old symbol table {} new symbol table {}".format(oldSymOff, newSymOff))
+print(f"Old symbol table {oldSymOff} new symbol table {newSymOff}")
 symOffDelta = newSymOff - oldSymOff
 
 # Align string table
 oldStrOff = symCmd.stroff
 newStrOff = ((oldStrOff + symOffDelta) + 3) & ~(3)
-print("Old string table {} new string table {}".format(oldStrOff, newStrOff))
+print(f"Old string table {oldStrOff} new string table {newStrOff}")
 strOffDelta = newStrOff - (oldStrOff + symOffDelta)
 
 # Write header
 symCmd.symoff = newSymOff
 symCmd.stroff = newStrOff
 
-if is_fat_binary:
-    new_file = slice_path.open("wb")
-else:
-    new_file = input_path.open("wb")
-
+new_file = slice_path.open("wb") if is_fat_binary else input_path.open("wb")
 machFile.headers[0].write(new_file)  # Write header to file
 original_file.seek(new_file.tell())  # Seek past header
 
@@ -92,15 +88,13 @@ if oldSymOff > oldStrOff:
     new_file.write(b"\0" * strOffDelta)
     new_file.write(original_file.read(oldSymOff - original_file.tell()))
     new_file.write(b"\0" * symOffDelta)
-    new_file.write(original_file.read())
 else:
     new_file.write(original_file.read(oldSymOff - original_file.tell()))
     new_file.write(b"\0" * symOffDelta)
     new_file.write(original_file.read(oldStrOff - original_file.tell()))
     new_file.write(b"\0" * strOffDelta)
-    new_file.write(original_file.read())
-
-print("Symbol table aligned for " + input_path.name)
+new_file.write(original_file.read())
+print(f"Symbol table aligned for {input_path.name}")
 
 if is_fat_binary:
     print("Replacing 32-bit slice in fat binary")
